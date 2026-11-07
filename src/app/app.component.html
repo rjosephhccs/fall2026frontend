@@ -1,0 +1,128 @@
+<div class="login-screen" *ngIf="!loggedIn">
+  <section class="login-panel">
+    <div class="login-brand">
+      <div class="logo-mark">IM</div><p class="eyebrow">ELECTRONICS STORE</p>
+      <h1>Inventory<br>Management</h1>
+      <p class="brand-copy">A clearer view of your stock, orders, and team.</p>
+      <div class="brand-art"><span class="art-box one"></span><span class="art-box two"></span><span class="art-box three"></span></div>
+    </div>
+    <div class="login-form-panel">
+      <div class="mobile-logo"><span class="logo-mark small">IM</span><strong>Inventory Management</strong></div>
+      <p class="eyebrow purple">WORKSPACE ACCESS</p><h2>Welcome back</h2>
+      <p class="muted">Enter your details to access your workspace.</p>
+      <form (ngSubmit)="login()" #loginForm="ngForm" novalidate>
+        <label for="loginUsername">Username</label>
+        <div class="input-wrap"><span>♙</span><input id="loginUsername" name="username" [(ngModel)]="loginUsername" required placeholder="e.g. j.smith" autocomplete="username"></div>
+        <label for="loginPassword">Password</label>
+        <div class="input-wrap"><span>⌑</span><input id="loginPassword" name="password" [(ngModel)]="loginPassword" required [type]="showPassword ? 'text' : 'password'" placeholder="Enter your password" autocomplete="current-password"><button type="button" class="text-button" (click)="showPassword=!showPassword">{{showPassword?'Hide':'Show'}}</button></div>
+        <label for="loginRole">Preview dashboard as</label>
+        <select id="loginRole" name="role" [(ngModel)]="loginRole"><option *ngFor="let role of roles" [ngValue]="role">{{role}}</option></select>
+        <p class="login-error" *ngIf="loginError" role="alert">{{loginError}}</p>
+        <button class="primary-button login-submit" type="submit">Sign in <span>→</span></button>
+      </form>
+      <div class="demo-notice"><span class="notice-dot"></span><span><strong>Front-end demo</strong><br>Use any username and a password of at least 8 characters.</span></div>
+      <p class="login-footer">Authorized employees only · Inventory Management System</p>
+    </div>
+  </section>
+</div>
+
+<div class="app-shell" *ngIf="loggedIn">
+  <aside class="sidebar">
+    <div class="sidebar-brand"><div class="logo-mark">IM</div><div><strong>Inventory</strong><small>MANAGEMENT SYSTEM</small></div></div>
+    <div class="nav-label">WORKSPACE</div>
+    <button class="nav-item" [class.active]="activePage==='dashboard'" (click)="navigate('dashboard')"><span class="nav-icon">▦</span>Dashboard</button>
+    <button class="nav-item" [class.active]="activePage==='inventory'" (click)="navigate('inventory')"><span class="nav-icon">▤</span>Inventory <span class="nav-count">{{products.length}}</span></button>
+    <button class="nav-item" [class.active]="activePage==='orders'" (click)="navigate('orders')"><span class="nav-icon">▣</span>Product Orders</button>
+    <div class="nav-label admin-label">ADMINISTRATION</div>
+    <button class="nav-item" [class.active]="activePage==='users'" (click)="navigate('users')"><span class="nav-icon">♙</span>User Management <span class="lock-tag" *ngIf="!canManageUsers">Role</span></button>
+    <div class="sidebar-bottom"><div class="help-card"><span class="help-symbol">?</span><strong>Need a hand?</strong><p>This is a front-end demo workspace.</p></div>
+      <div class="profile"><div class="avatar">{{currentUsername.charAt(0).toUpperCase()}}</div><div class="profile-text"><strong>{{currentUsername}}</strong><small>{{currentRole}}</small></div><button class="icon-button" title="Log out" (click)="logout()">↪</button></div>
+    </div>
+  </aside>
+
+  <main class="main-area">
+    <header class="topbar"><div class="breadcrumb"><span>Workspace</span><b>/</b><strong>{{pageTitle}}</strong></div><div class="topbar-actions"><span class="demo-pill"><i></i> DEMO MODE</span><button class="user-chip" (click)="logout()" title="Log out"><span class="avatar mini">{{currentUsername.charAt(0).toUpperCase()}}</span><span>{{currentUsername}}</span><b>⌄</b></button></div></header>
+    <section class="content-area">
+      <div class="page-heading"><div><p class="eyebrow purple">OVERVIEW</p><h1>{{pageTitle}}</h1>
+        <p class="muted" *ngIf="activePage==='dashboard'">Here’s what’s happening with your store today.</p>
+        <p class="muted" *ngIf="activePage==='inventory'">Track products, quantities, barcodes, and stock levels.</p>
+        <p class="muted" *ngIf="activePage==='orders'">Create orders and review order confirmations.</p>
+        <p class="muted" *ngIf="activePage==='users'">Manage employee accounts and assigned roles.</p>
+      </div><div class="heading-actions">
+        <button *ngIf="activePage==='inventory'&&canManageInventory" class="primary-button" (click)="openNewProduct()">＋ Add product</button>
+        <button *ngIf="activePage==='orders'&&canCreateOrders" class="primary-button" (click)="openNewOrder()">＋ Create order</button>
+        <button *ngIf="activePage==='users'&&canManageUsers" class="primary-button" (click)="openNewUser()">＋ Add employee</button>
+      </div></div>
+
+      <ng-container *ngIf="activePage==='dashboard'">
+        <div class="welcome-banner"><div><span class="welcome-tag">YOUR WORKSPACE</span><h2>Good to see you, {{currentUsername}}.</h2><p>You’re signed in as <strong>{{currentRole}}</strong>. Here’s your inventory snapshot.</p></div><div class="banner-icon">▦</div></div>
+        <div class="stat-grid">
+          <article class="stat-card"><div class="stat-top"><span>Total products</span><b class="stat-icon lavender">▤</b></div><strong>{{products.length}}</strong><small>Product records in demo</small></article>
+          <article class="stat-card"><div class="stat-top"><span>Units in stock</span><b class="stat-icon mint">▥</b></div><strong>{{totalStockUnits}}</strong><small>Across all products</small></article>
+          <article class="stat-card"><div class="stat-top"><span>Orders recorded</span><b class="stat-icon blue">▣</b></div><strong>{{orders.length}}</strong><small>Demo order history</small></article>
+          <article class="stat-card"><div class="stat-top"><span>Low-stock items</span><b class="stat-icon peach">!</b></div><strong>{{lowStockProducts.length}}</strong><small class="warning-text">Needs attention</small></article>
+        </div>
+        <div class="dashboard-grid">
+          <section class="surface-card"><div class="card-heading"><div><h3>Stock requiring attention</h3><p>Products with 7 or fewer units remaining</p></div><button class="link-button" (click)="navigate('inventory')">View inventory →</button></div>
+            <div class="table-scroll"><table><thead><tr><th>PRODUCT</th><th>BARCODE</th><th>IN STOCK</th><th>STATUS</th></tr></thead><tbody>
+              <tr *ngFor="let p of lowStockProducts"><td><div class="product-cell"><span class="product-thumb">▤</span><div><strong>{{p.name}}</strong><small>ID #{{p.id}}</small></div></div></td><td class="mono">{{p.barcode}}</td><td><strong>{{p.stock}}</strong></td><td><span class="status low">Low stock</span></td></tr>
+              <tr *ngIf="!lowStockProducts.length"><td colspan="4" class="empty-state">No low-stock products right now.</td></tr>
+            </tbody></table></div>
+          </section>
+          <section class="surface-card quick-actions"><div class="card-heading"><div><h3>Quick actions</h3><p>Jump into a common task</p></div></div>
+            <button class="quick-action" (click)="navigate('inventory')"><span class="quick-icon lavender">＋</span><span><strong>View inventory</strong><small>Search products and stock</small></span><b>→</b></button>
+            <button class="quick-action" (click)="navigate('orders')"><span class="quick-icon mint">▣</span><span><strong>Create an order</strong><small>Prepare a product order</small></span><b>→</b></button>
+            <button class="quick-action" (click)="navigate('users')"><span class="quick-icon peach">♙</span><span><strong>Manage employees</strong><small>Accounts and role assignments</small></span><b>→</b></button>
+            <p class="role-hint">Actions shown depend on the selected demo role.</p>
+          </section>
+        </div>
+        <section class="surface-card"><div class="card-heading"><div><h3>Recent orders</h3><p>Latest activity in the demo workspace</p></div><button class="link-button" (click)="navigate('orders')">All orders →</button></div>
+          <div class="table-scroll"><table><thead><tr><th>ORDER ID</th><th>CREATED BY</th><th>ORDER DETAILS</th><th>TOTAL</th><th>STATUS</th></tr></thead><tbody><tr *ngFor="let o of orders.slice(0,3)"><td class="mono">#{{o.id}}</td><td>{{o.createdBy}}</td><td>{{o.items}}</td><td><strong>{{o.total|currency}}</strong></td><td><span class="status" [class.complete]="o.status==='Completed'" [class.pending]="o.status==='Pending'">{{o.status}}</span></td></tr></tbody></table></div>
+        </section>
+      </ng-container>
+
+      <ng-container *ngIf="activePage==='inventory'">
+        <div class="stat-grid"><article class="stat-card"><div class="stat-top"><span>Product records</span><b class="stat-icon lavender">▤</b></div><strong>{{products.length}}</strong></article><article class="stat-card"><div class="stat-top"><span>Total units</span><b class="stat-icon mint">▥</b></div><strong>{{totalStockUnits}}</strong></article><article class="stat-card"><div class="stat-top"><span>Inventory value</span><b class="stat-icon blue">$</b></div><strong>{{inventoryValue|currency}}</strong></article><article class="stat-card"><div class="stat-top"><span>Low stock</span><b class="stat-icon peach">!</b></div><strong>{{lowStockProducts.length}}</strong></article></div>
+        <section class="surface-card"><div class="table-toolbar"><div><h3>Product inventory</h3><p>{{filteredProducts.length}} products found</p></div><div class="toolbar-search"><span>⌕</span><input [(ngModel)]="searchTerm" placeholder="Search name, ID, barcode..."></div></div>
+          <div class="table-scroll"><table><thead><tr><th>PRODUCT</th><th>BARCODE</th><th>CATEGORY</th><th>PRICE</th><th>STOCK QTY</th><th>STATUS</th><th *ngIf="canManageInventory">ACTIONS</th></tr></thead><tbody>
+            <tr *ngFor="let p of filteredProducts"><td><div class="product-cell"><span class="product-thumb">▤</span><div><strong>{{p.name}}</strong><small>ID #{{p.id}}</small></div></div></td><td class="mono">{{p.barcode}}</td><td>{{p.category}}</td><td>{{p.price|currency}}</td><td><strong>{{p.stock}}</strong></td><td><span class="status" [class.low]="p.stock<=7" [class.complete]="p.stock>7">{{p.stock<=7?'Low stock':'In stock'}}</span></td><td *ngIf="canManageInventory"><div class="row-actions"><button class="small-action" (click)="openEditProduct(p)">Edit</button><button class="small-action danger" (click)="deleteProduct(p)">Delete</button></div></td></tr>
+            <tr *ngIf="!filteredProducts.length"><td [attr.colspan]="canManageInventory?7:6" class="empty-state">No products match your search.</td></tr>
+          </tbody></table></div><div class="table-footer">Showing {{filteredProducts.length}} of {{products.length}} demo products <span>Refresh resets changes.</span></div>
+        </section><div class="role-banner" *ngIf="!canManageInventory">You can preview this inventory list. Editing is reserved for Inventory Managers and Super Users.</div>
+      </ng-container>
+
+      <ng-container *ngIf="activePage==='orders'">
+        <div class="stat-grid"><article class="stat-card"><div class="stat-top"><span>Total orders</span><b class="stat-icon lavender">▣</b></div><strong>{{orders.length}}</strong></article><article class="stat-card"><div class="stat-top"><span>Completed</span><b class="stat-icon mint">✓</b></div><strong>{{completedOrders}}</strong></article><article class="stat-card"><div class="stat-top"><span>Order value</span><b class="stat-icon blue">$</b></div><strong>{{ordersTotal|currency}}</strong></article><article class="stat-card"><div class="stat-top"><span>Products available</span><b class="stat-icon peach">▤</b></div><strong>{{products.length}}</strong></article></div>
+        <section class="surface-card"><div class="table-toolbar"><div><h3>Order history</h3><p>Orders and confirmation records</p></div><div class="toolbar-search"><span>⌕</span><input [(ngModel)]="searchTerm" placeholder="Search order or product..."></div></div>
+          <div class="table-scroll"><table><thead><tr><th>ORDER ID</th><th>DATE</th><th>CREATED BY</th><th>ORDER DETAILS</th><th>TOTAL</th><th>STATUS</th></tr></thead><tbody><tr *ngFor="let o of filteredOrders"><td class="mono">#{{o.id}}</td><td>{{o.date}}</td><td>{{o.createdBy}}</td><td>{{o.items}}</td><td><strong>{{o.total|currency}}</strong></td><td><span class="status" [class.complete]="o.status==='Completed'" [class.pending]="o.status==='Pending'">{{o.status}}</span></td></tr><tr *ngIf="!filteredOrders.length"><td colspan="6" class="empty-state">No orders match your search.</td></tr></tbody></table></div>
+        </section><div class="role-banner" *ngIf="!canCreateOrders">You can view order history. Creating orders is reserved for Product Managers and Super Users.</div>
+      </ng-container>
+
+      <ng-container *ngIf="activePage==='users'">
+        <div class="role-banner" *ngIf="!canManageUsers">This screen is restricted in the demo to Super User. Log out and choose Super User to preview account management.</div>
+        <div class="stat-grid"><article class="stat-card"><div class="stat-top"><span>Total accounts</span><b class="stat-icon lavender">♙</b></div><strong>{{employees.length}}</strong></article><article class="stat-card"><div class="stat-top"><span>Active accounts</span><b class="stat-icon mint">✓</b></div><strong>{{activeEmployees}}</strong></article><article class="stat-card"><div class="stat-top"><span>Product Managers</span><b class="stat-icon blue">▣</b></div><strong>{{productManagerCount}}</strong></article><article class="stat-card"><div class="stat-top"><span>Inventory Managers</span><b class="stat-icon peach">▤</b></div><strong>{{inventoryManagerCount}}</strong></article></div>
+        <section class="surface-card"><div class="table-toolbar"><div><h3>Employee accounts</h3><p>Assign a role to each team member</p></div><div class="toolbar-search"><span>⌕</span><input [(ngModel)]="searchTerm" placeholder="Search username or role..."></div></div>
+          <div class="table-scroll"><table><thead><tr><th>EMPLOYEE</th><th>USER ID</th><th>ROLE</th><th>STATUS</th><th *ngIf="canManageUsers">ACTIONS</th></tr></thead><tbody><tr *ngFor="let e of filteredEmployees"><td><div class="product-cell"><span class="avatar table-avatar">{{e.username.charAt(0).toUpperCase()}}</span><div><strong>{{e.username}}</strong><small>Employee account</small></div></div></td><td class="mono">#{{e.id}}</td><td><span class="role-chip">{{e.role}}</span></td><td><span class="status" [class.complete]="e.status==='Active'" [class.low]="e.status==='Inactive'">{{e.status}}</span></td><td *ngIf="canManageUsers"><div class="row-actions"><button class="small-action" (click)="openEditUser(e)">Edit</button><button class="small-action danger" (click)="deleteUser(e)">Delete</button></div></td></tr><tr *ngIf="!filteredEmployees.length"><td [attr.colspan]="canManageUsers?5:4" class="empty-state">No accounts match your search.</td></tr></tbody></table></div>
+        </section>
+      </ng-container>
+    </section>
+    <footer class="main-footer"><span>© 2026 Inventory Management System</span><span><i class="footer-dot"></i> Front-end preview · Local demo data</span></footer>
+  </main>
+</div>
+
+<div class="modal-backdrop" *ngIf="modal" (click)="modal=null">
+  <section class="modal-card" (click)="$event.stopPropagation()" role="dialog" aria-modal="true">
+    <div class="modal-heading"><div><p class="eyebrow purple">WORKSPACE FORM</p><h2 *ngIf="modal==='product'">{{editingProductId?'Edit product':'Add product'}}</h2><h2 *ngIf="modal==='order'">Create product order</h2><h2 *ngIf="modal==='user'">{{editingUserId?'Edit employee':'Add employee'}}</h2></div><button class="icon-button close-button" (click)="modal=null" aria-label="Close">×</button></div>
+    <form *ngIf="modal==='product'" (ngSubmit)="saveProduct()" #productRef="ngForm"><div class="form-grid">
+      <div class="form-field full"><label for="pname">Product name *</label><input id="pname" name="pname" [(ngModel)]="productForm.name" required></div>
+      <div class="form-field"><label for="barcode">Barcode *</label><input id="barcode" name="barcode" [(ngModel)]="productForm.barcode" required></div>
+      <div class="form-field"><label for="category">Category</label><select id="category" name="category" [(ngModel)]="productForm.category"><option>Accessories</option><option>Adapters</option><option>Displays</option><option>Storage</option><option>Computers</option><option>Audio</option></select></div>
+      <div class="form-field"><label for="price">Unit price ($)</label><input id="price" type="number" name="price" [(ngModel)]="productForm.price" min="0" step=".01" required></div>
+      <div class="form-field"><label for="stock">Stock quantity</label><input id="stock" type="number" name="stock" [(ngModel)]="productForm.stock" min="0" step="1" required></div>
+      <div class="form-field full"><label for="description">Description</label><textarea id="description" name="description" [(ngModel)]="productForm.description" rows="3"></textarea></div>
+    </div><div class="modal-actions"><button type="button" class="secondary-button" (click)="modal=null">Cancel</button><button class="primary-button" type="submit">Save product</button></div></form>
+    <form *ngIf="modal==='order'" (ngSubmit)="saveOrder()"><div class="form-field"><label for="orderProduct">Product *</label><select id="orderProduct" name="orderProduct" [(ngModel)]="orderProductId"><option *ngFor="let p of products" [ngValue]="p.id">{{p.name}} — {{p.stock}} available</option></select></div><div class="form-field spaced-field"><label for="quantity">Quantity *</label><input id="quantity" type="number" name="quantity" [(ngModel)]="orderQuantity" min="1" step="1" required></div><div class="order-summary"><span>Unit price</span><strong>{{(selectedOrderProduct?.price||0)|currency}}</strong><span>Available stock</span><strong>{{selectedOrderProduct?.stock??0}} units</strong><span>Order total</span><strong class="summary-total">{{orderTotal|currency}}</strong></div><p class="form-hint">Demo only: the quantity is subtracted from browser sample stock.</p><div class="modal-actions"><button type="button" class="secondary-button" (click)="modal=null">Cancel</button><button class="primary-button" type="submit">Create order</button></div></form>
+    <form *ngIf="modal==='user'" (ngSubmit)="saveUser()"><div class="form-field"><label for="employeeUsername">Username *</label><input id="employeeUsername" name="employeeUsername" [(ngModel)]="userForm.username" required></div><div class="form-field spaced-field" *ngIf="!editingUserId"><label for="employeePassword">Temporary password (demo only)</label><input id="employeePassword" name="employeePassword" [(ngModel)]="userForm.password" type="password" autocomplete="new-password"><p class="form-hint">This demonstration does not save or verify passwords.</p></div><div class="form-field spaced-field"><label for="employeeRole">Assigned role *</label><select id="employeeRole" name="employeeRole" [(ngModel)]="userForm.role"><option *ngFor="let role of roles" [ngValue]="role">{{role}}</option></select></div><div class="form-field spaced-field"><label for="employeeStatus">Account status</label><select id="employeeStatus" name="employeeStatus" [(ngModel)]="userForm.status"><option>Active</option><option>Inactive</option></select></div><div class="modal-actions"><button type="button" class="secondary-button" (click)="modal=null">Cancel</button><button class="primary-button" type="submit">Save employee</button></div></form>
+  </section>
+</div>
+<div class="toast" *ngIf="toast" role="status"><span>✓</span>{{toast}}<button (click)="clearToast()" aria-label="Dismiss">×</button></div>
