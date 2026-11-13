@@ -4,22 +4,22 @@
     <div class="nav-label">WORKSPACE</div>
     <button class="nav-item" [class.active]="activePage==='dashboard'" (click)="navigate('dashboard')"><span class="nav-icon">▦</span>Dashboard</button>
     <button class="nav-item" [class.active]="activePage==='inventory'" (click)="navigate('inventory')"><span class="nav-icon">▤</span>Inventory <span class="nav-count">{{products.length}}</span></button>
-    <div class="nav-label admin-label">COMING LATER</div>
-    <button class="nav-item" disabled><span class="nav-icon">▣</span>Product Orders</button>
-    <button class="nav-item" disabled><span class="nav-icon">♙</span>User Management</button>
-    <div class="sidebar-bottom"><div class="help-card"><span class="help-symbol">i</span><strong>API-connected workspace</strong><p>Inventory data is loaded from the classroom REST API.</p></div></div>
+    <div class="nav-label admin-label">MANAGEMENT</div>
+    <button class="nav-item" [class.active]="activePage==='orders'" (click)="navigate('orders')"><span class="nav-icon">▣</span>Product Orders</button>
+    <button class="nav-item" [class.active]="activePage==='users'" (click)="navigate('users')"><span class="nav-icon">♙</span>User Management</button>
+    <div class="sidebar-bottom"><div class="help-card"><span class="help-symbol">i</span><strong>Inventory workspace</strong><p>Manage products and create orders.</p></div></div>
   </aside>
 
   <main class="main-area">
     <header class="topbar">
       <div class="breadcrumb"><span>Workspace</span><b>/</b><strong>{{pageTitle}}</strong></div>
-      <div class="topbar-actions"><span class="demo-pill"><i></i> REST API MODE</span></div>
+      
     </header>
 
     <section class="content-area">
       <div class="page-heading">
         <div><p class="eyebrow purple">INVENTORY WORKSPACE</p><h1>{{pageTitle}}</h1>
-          <p class="muted">{{activePage==='dashboard' ? 'Live summary based on records returned by the inventory API.' : 'Products loaded from the classroom inventory REST API.'}}</p>
+          <p class="muted">{{activePage==='dashboard' ? 'Your inventory at a glance.' : activePage==='inventory' ? 'Manage your product catalog.' : activePage==='orders' ? 'Create and complete a product order.' : 'Manage system accounts.'}}</p>
         </div>
         <div class="heading-actions" *ngIf="activePage==='inventory'">
           <button class="secondary-button" type="button" (click)="refresh()" [disabled]="loading">Refresh</button>
@@ -28,14 +28,14 @@
       </div>
 
       <div class="role-banner" *ngIf="apiError" role="alert">{{apiError}}</div>
-      <div class="role-banner" *ngIf="loading">Loading inventory from the REST API…</div>
+      <div class="role-banner" *ngIf="loading">Loading inventory…</div>
 
       <ng-container *ngIf="activePage==='dashboard'">
-        <div class="welcome-banner"><div><span class="welcome-tag">LIVE INVENTORY DATA</span><h2>Inventory overview</h2><p>Dashboard figures are calculated from products returned by the API.</p></div><div class="banner-icon">▦</div></div>
+        <div class="welcome-banner"><div><span class="welcome-tag">INVENTORY MANAGEMENT</span><h2>Inventory overview</h2><p>Monitor products, stock levels, and inventory value.</p></div><div class="banner-icon">▦</div></div>
         <div class="stat-grid">
-          <article class="stat-card"><div class="stat-top"><span>Total products</span><b class="stat-icon lavender">▤</b></div><strong>{{products.length}}</strong><small>Records returned by API</small></article>
-          <article class="stat-card"><div class="stat-top"><span>Units in stock</span><b class="stat-icon mint">▥</b></div><strong>{{totalStockUnits}}</strong><small>Quantity from API response</small></article>
-          <article class="stat-card"><div class="stat-top"><span>Inventory value</span><b class="stat-icon blue">$</b></div><strong>{{inventoryValue|currency}}</strong><small>Based on returned price and quantity</small></article>
+          <article class="stat-card"><div class="stat-top"><span>Total products</span><b class="stat-icon lavender">▤</b></div><strong>{{products.length}}</strong><small>Products in your catalog</small></article>
+          <article class="stat-card"><div class="stat-top"><span>Units in stock</span><b class="stat-icon mint">▥</b></div><strong>{{totalStockUnits}}</strong><small>Units recorded in stock</small></article>
+          <article class="stat-card"><div class="stat-top"><span>Inventory value</span><b class="stat-icon blue">$</b></div><strong>{{inventoryValue|currency}}</strong><small>Based on product price and quantity</small></article>
           <article class="stat-card"><div class="stat-top"><span>Low-stock items</span><b class="stat-icon peach">!</b></div><strong>{{lowStockProducts.length}}</strong><small class="warning-text">At or below reorder level</small></article>
         </div>
         <section class="surface-card">
@@ -55,21 +55,40 @@
           <article class="stat-card"><div class="stat-top"><span>Low stock</span><b class="stat-icon peach">!</b></div><strong>{{lowStockProducts.length}}</strong></article>
         </div>
         <section class="surface-card">
-          <div class="table-toolbar"><div><h3>Product inventory</h3><p>{{filteredProducts.length}} products returned by API</p></div><div class="toolbar-search"><span>⌕</span><input [(ngModel)]="searchTerm" placeholder="Search name, ID, SKU…"></div></div>
+          <div class="table-toolbar"><div><h3>Product inventory</h3><p>{{filteredProducts.length}} products in your catalog</p></div><div class="toolbar-search"><span>⌕</span><input [(ngModel)]="searchTerm" placeholder="Search name, ID, SKU…"></div></div>
           <div class="table-scroll"><table><thead><tr><th>PRODUCT</th><th>SKU</th><th>PRICE</th><th>STOCK QTY</th><th>REORDER LEVEL</th><th>STATUS</th><th>ACTIONS</th></tr></thead><tbody>
             <tr *ngFor="let p of filteredProducts"><td><div class="product-cell"><span class="product-thumb">▤</span><div><strong>{{p.name}}</strong><small>ID #{{p.id}}</small></div></div></td><td class="mono">{{p.barcode}}</td><td>{{p.price|currency}}</td><td><strong>{{p.stock}}</strong></td><td>{{p.reorderLevel}}</td><td><span class="status" [class.low]="p.stock<=p.reorderLevel" [class.complete]="p.stock>p.reorderLevel">{{p.stock<=p.reorderLevel?'Low stock':'In stock'}}</span></td><td><button class="small-action" (click)="openEditProduct(p)">Edit</button></td></tr>
             <tr *ngIf="!loading && !apiError && !filteredProducts.length"><td colspan="7" class="empty-state">No products returned. Add a product or check the API.</td></tr>
           </tbody></table></div>
-          <div class="table-footer">Showing {{filteredProducts.length}} of {{products.length}} API products <span>Refresh loads current server data.</span></div>
+          <div class="table-footer">Showing {{filteredProducts.length}} of {{products.length}} products <span>Refresh to load the latest product data.</span></div>
         </section>
-        <div class="role-banner">The classroom API supports product creation and updates. Product deletion and stock-quantity editing are not exposed by the supplied backend yet. Category is not part of the current API schema.</div>
+        <div class="role-banner">Product deletion, stock quantity updates, and category editing are not currently available in the backend.</div>
       </ng-container>
 
-      <ng-container *ngIf="activePage==='orders' || activePage==='users'">
-        <section class="surface-card"><div class="empty-state">This section is hidden from live data until the classroom backend provides the required endpoints. No sample records are displayed.</div></section>
+      <ng-container *ngIf="activePage==='orders'">
+        <section class="surface-card">
+          <div class="card-heading"><div><h3>Create a product order</h3><p>Create an order, add one product, and complete it.</p></div></div>
+          <form class="order-form" (ngSubmit)="createOrder()">
+            <div class="form-grid">
+              <div class="form-field full"><label for="orderProduct">Product *</label><select id="orderProduct" name="orderProduct" [(ngModel)]="orderForm.productId" required><option *ngFor="let p of products" [ngValue]="p.id">{{p.name}} — {{p.price|currency}}</option></select></div>
+              <div class="form-field"><label for="orderQty">Quantity *</label><input id="orderQty" type="number" name="orderQty" min="1" step="1" [(ngModel)]="orderForm.quantity" required></div>
+              <div class="form-field"><label for="orderNotes">Order notes</label><input id="orderNotes" name="orderNotes" [(ngModel)]="orderForm.notes" maxlength="500" placeholder="Optional notes"></div>
+            </div>
+            <p class="form-hint">The backend currently assigns orders to its configured temporary user account.</p>
+            <div class="modal-actions"><button class="primary-button" type="submit" [disabled]="orderBusy || loading || !products.length">{{orderBusy?'Processing…':'Create and complete order'}}</button></div>
+          </form>
+        </section>
+        <section class="surface-card" *ngIf="lastOrderMessage"><div class="empty-state">{{lastOrderMessage}}</div></section>
+        <div class="role-banner">Order creation is connected. Order history is unavailable until the backend adds a GET orders endpoint.</div>
+      </ng-container>
+      <ng-container *ngIf="activePage==='users'">
+        <section class="surface-card">
+          <div class="card-heading"><div><h3>User Management</h3><p>Manage system accounts and access.</p></div></div>
+          <div class="empty-state">The current backend does not provide user listing, creation, editing, or deletion endpoints. This section is open, but account management needs those endpoints before it can manage real users.</div>
+        </section>
       </ng-container>
     </section>
-    <footer class="main-footer"><span>© 2026 Inventory Management System</span><span><i class="footer-dot"></i> Inventory data requested from REST API</span></footer>
+    <footer class="main-footer"><span>© 2026 Inventory Management System</span><span>Inventory Management</span></footer>
   </main>
 </div>
 
