@@ -1,47 +1,101 @@
 import { CommonModule } from '@angular/common';
-import { Component } from '@angular/core';
+import { ChangeDetectorRef, Component, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { HttpErrorResponse } from '@angular/common/http';
+import { ApiProduct, ProductApiService, ProductCreatePayload } from './product-api.service';
+import { AuthService } from './auth.service';
+import { ApiUser, UserApiService } from './user-api.service';
 
 type Role = 'Product Manager' | 'Inventory Manager' | 'Super User';
 type Page = 'dashboard' | 'inventory' | 'orders' | 'users';
-type Product = {id:number;name:string;description:string;barcode:string;price:number;stock:number;category:string};
+type Product = {id:number;name:string;description:string;barcode:string;price:number;stock:number;reorderLevel:number};
 type Order = {id:number;createdBy:string;date:string;items:string;total:number;status:'Completed'|'Pending'};
-type Employee = {id:number;username:string;role:Role;status:'Active'|'Inactive'};
+type Employee = {id:number;username:string;role:Role;apiRole:string;status:'Active'|'Inactive';firstName:string;lastName:string;email:string};
 
 @Component({selector:'app-root',standalone:true,imports:[CommonModule,FormsModule],templateUrl:'./app.component.html',styleUrl:'./app.component.css'})
-export class AppComponent {
-  loggedIn=false; showPassword=false; loginUsername=''; loginPassword=''; loginRole:Role='Inventory Manager'; loginError='';
+export class AppComponent implements OnInit {
+  private readonly productApi = inject(ProductApiService);
+  private readonly auth = inject(AuthService);
+  private readonly userApi = inject(UserApiService);
+  private readonly cdr = inject(ChangeDetectorRef);
+  loadingProducts = false;
+  savingProduct = false;
+  productError = '';
+  loadingUsers = false;
+  savingUser = false;
+  userError = '';
+  loggedIn=false; loggingIn=false; showPassword=false; loginUsername=''; loginPassword=''; authenticatedRole=''; loginError='';
   activePage:Page='dashboard'; searchTerm=''; toast=''; modal:'product'|'order'|'user'|null=null;
   editingProductId:number|null=null; editingUserId:number|null=null;
   roles:Role[]=['Product Manager','Inventory Manager','Super User'];
-  productForm={name:'',description:'',barcode:'',price:0,stock:0,category:'Accessories'};
-  userForm:{username:string;password:string;role:Role;status:'Active'|'Inactive'}={username:'',password:'',role:'Product Manager',status:'Active'};
+  productForm={name:'',description:'',barcode:'',price:0,stock:0,reorderLevel:5};
+  userForm:{username:string;password:string;role:Role;status:'Active'|'Inactive';firstName:string;lastName:string;email:string}={username:'',password:'',role:'Product Manager',status:'Active',firstName:'',lastName:'',email:''};
   orderProductId=1001; orderQuantity=1;
-  products:Product[]=[
-    {id:1001,name:'Wireless Mouse',description:'Wireless optical mouse',barcode:'810000100001',price:24.99,stock:48,category:'Accessories'},
-    {id:1002,name:'Mechanical Keyboard',description:'RGB mechanical keyboard',barcode:'810000100002',price:79.99,stock:16,category:'Accessories'},
-    {id:1003,name:'USB-C Hub',description:'7-in-1 USB-C hub',barcode:'810000100003',price:39.5,stock:7,category:'Adapters'},
-    {id:1004,name:'27-inch Monitor',description:'QHD computer monitor',barcode:'810000100004',price:249.99,stock:12,category:'Displays'},
-    {id:1005,name:'Webcam HD',description:'1080p USB webcam',barcode:'810000100005',price:54.99,stock:4,category:'Accessories'},
-    {id:1006,name:'External SSD 1TB',description:'Portable solid-state drive',barcode:'810000100006',price:99.99,stock:22,category:'Storage'}
-  ];
-  orders:Order[]=[
-    {id:5001,createdBy:'j.smith',date:'2026-10-21',items:'Wireless Mouse × 2',total:49.98,status:'Completed'},
-    {id:5002,createdBy:'m.jones',date:'2026-10-22',items:'USB-C Hub × 1',total:39.5,status:'Completed'},
-    {id:5003,createdBy:'j.smith',date:'2026-10-23',items:'External SSD 1TB × 1',total:99.99,status:'Pending'}
-  ];
-  employees:Employee[]=[
-    {id:1,username:'j.smith',role:'Product Manager',status:'Active'},
-    {id:2,username:'m.jones',role:'Inventory Manager',status:'Active'},
-    {id:3,username:'admin.demo',role:'Super User',status:'Active'}
-  ];
-  get currentRole():Role{return this.loginRole}
-  get currentUsername():string{return this.loginUsername.trim()||'demo.user'}
+  products:Product[]=[];
+  orders:Order[]=[];
+  employees:Employee[]=[];
+  get currentRole():string {
+    if (this.authenticatedRole.includes('SUPER_USER') || this.authenticatedRole.includes('ADMIN')) return 'Super User';
+    if (this.authenticatedRole.includes('INVENTORY_MANAGER')) return 'Inventory Manager';
+    if (this.authenticatedRole.includes('PRODUCT_MANAGER')) return 'Product Manager';
+    return this.authenticatedRole || 'Unknown role';
+  }
+  get currentUsername():string{return this.auth.session?.username || this.loginUsername.trim()}
   get pageTitle():string{return ({dashboard:'Dashboard',inventory:'Inventory',orders:'Product Orders',users:'User Management'} as Record<Page,string>)[this.activePage]}
-  get canManageInventory():boolean{return this.currentRole==='Inventory Manager'||this.currentRole==='Super User'}
-  get canCreateOrders():boolean{return this.currentRole==='Product Manager'||this.currentRole==='Super User'}
-  get canManageUsers():boolean{return this.currentRole==='Super User'}
-  get lowStockProducts():Product[]{return this.products.filter(p=>p.stock<=7)}
+  get canManageInventory():boolean{return this.hasRole('SUPER_USER','INVENTORY_MANAGER')}
+  get canCreateOrders():boolean{return this.hasRole('SUPER_USER','PRODUCT_MANAGER')}
+  get canManageUsers():boolean{return this.hasRole('SUPER_USER')}
+  private hasRole(...roles:string[]):boolean{return roles.some(role=>this.authenticatedRole===role||this.authenticatedRole===`ROLE_${role}`)}
+  ngOnInit():void {
+    const session = this.auth.session;
+    if(session){this.loggedIn=true;this.activePage='inventory';this.loginUsername=session.username;this.authenticatedRole=session.role;this.refreshProducts();}
+  }
+  private fromApi(p:ApiProduct):Product {
+    return {id:p.product_id,name:p.name??p.product_name??'',description:p.description??'',barcode:p.sku,
+      price:Number(p.price??p.unit_price??0),stock:Number(p.quantity??p.stock_quantity??p.stock??0),reorderLevel:p.reorder_level};
+  }
+  private toApi(p:Product | typeof this.productForm):ProductCreatePayload {
+    return {name:p.name.trim(),description:p.description.trim()||null,sku:p.barcode.trim(),
+      price:Number(Number(p.price).toFixed(2)),reorder_level:Number(p.reorderLevel)};
+  }
+  private fromUserApi(user:ApiUser):Employee {
+    const role:Role = user.role==='SUPER_USER' || user.role==='ROLE_SUPER_USER' ? 'Super User'
+      : user.role==='INVENTORY_OPERATOR' || user.role==='ROLE_INVENTORY_OPERATOR' || user.role==='INVENTORY_MANAGER' ? 'Inventory Manager'
+      : 'Product Manager';
+    return {id:user.userId,username:user.username,role,apiRole:user.role,status:user.isActive?'Active':'Inactive',
+      firstName:user.firstName??'',lastName:user.lastName??'',email:user.email??''};
+  }
+  private roleForApi(role:Role):string {
+    return role==='Super User' ? 'SUPER_USER' : role==='Inventory Manager' ? 'INVENTORY_MANAGER' : 'PRODUCT_MANAGER';
+  }
+  refreshUsers():void {
+    if(!this.canManageUsers || !this.ensureSession())return;
+    this.loadingUsers=true;this.userError='';
+    this.userApi.list().subscribe({
+      next:users=>{this.employees=users.map(user=>this.fromUserApi(user));this.loadingUsers=false;this.cdr.markForCheck();},
+      error:err=>{this.userError=this.apiError(err);this.loadingUsers=false;this.cdr.markForCheck();}
+    });
+  }
+  refreshProducts():void {
+    if (!this.ensureSession()) return;
+    this.loadingProducts=true; this.productError='';
+    this.productApi.list().subscribe({
+      next: rows=>{this.products=rows.map(p=>this.fromApi(p));this.loadingProducts=false;this.cdr.markForCheck();},
+      error: err=>{this.productError=this.apiError(err);this.loadingProducts=false;this.cdr.markForCheck();}
+    });
+  }
+  private apiError(err:HttpErrorResponse):string {
+    // A product API 401 does NOT mean the Spring Boot login failed. Stay in
+    // inventory so the operator can see the backend's actual error and retry.
+    if(err.status===401){
+      return 'FastAPI rejected this JWT (HTTP 401). Verify that the Render API uses the same JWT signing key and algorithm as Spring Boot. If your token expired, sign out and log in again.';
+    }
+    if(err.status===403)return 'Your account does not have permission for this operation (HTTP 403).';
+    if(typeof err.error?.detail==='string')return err.error.detail;
+    if(Array.isArray(err.error?.detail))return err.error.detail.map((x:{msg:string})=>x.msg).join('; ');
+    return `API request failed (HTTP ${err.status||'network error'}). Check the backend services and Angular proxy settings.`;
+  }
+  get lowStockProducts():Product[]{return this.products.filter(p=>p.stock<=p.reorderLevel)}
   get totalStockUnits():number{return this.products.reduce((n,p)=>n+p.stock,0)}
   get inventoryValue():number{return this.products.reduce((n,p)=>n+p.stock*p.price,0)}
   get ordersTotal():number{return this.orders.reduce((n,o)=>n+o.total,0)}
@@ -49,24 +103,118 @@ export class AppComponent {
   get activeEmployees():number{return this.employees.filter(e=>e.status==='Active').length}
   get productManagerCount():number{return this.employees.filter(e=>e.role==='Product Manager').length}
   get inventoryManagerCount():number{return this.employees.filter(e=>e.role==='Inventory Manager').length}
-  get filteredProducts():Product[]{const t=this.searchTerm.trim().toLowerCase();return !t?this.products:this.products.filter(p=>[String(p.id),p.name,p.barcode,p.category].some(v=>v.toLowerCase().includes(t)))}
+  get filteredProducts():Product[]{const t=this.searchTerm.trim().toLowerCase();return !t?this.products:this.products.filter(p=>[String(p.id),p.name,p.barcode,p.description].some(v=>v.toLowerCase().includes(t)))}
   get filteredOrders():Order[]{const t=this.searchTerm.trim().toLowerCase();return !t?this.orders:this.orders.filter(o=>[String(o.id),o.createdBy,o.items,o.status].some(v=>v.toLowerCase().includes(t)))}
   get filteredEmployees():Employee[]{const t=this.searchTerm.trim().toLowerCase();return !t?this.employees:this.employees.filter(e=>[String(e.id),e.username,e.role,e.status].some(v=>v.toLowerCase().includes(t)))}
   get selectedOrderProduct():Product|undefined{return this.products.find(p=>p.id===Number(this.orderProductId))}
   get orderTotal():number{return (this.selectedOrderProduct?.price??0)*Number(this.orderQuantity||0)}
-  login():void{this.loginError='';if(!this.loginUsername.trim()||!this.loginPassword){this.loginError='Enter your username and password.';return}if(this.loginPassword.length<8){this.loginError='For this demo, password must be at least 8 characters.';return}this.loggedIn=true;this.activePage='dashboard';this.searchTerm='';this.showToast(`Welcome, ${this.currentUsername}. Demo mode is active.`)}
-  logout():void{this.loggedIn=false;this.loginPassword='';this.loginError='';this.modal=null;this.searchTerm=''}
-  navigate(page:Page):void{if(page==='orders'&&!this.canCreateOrders){this.showToast('Order creation is available to Product Managers and Super Users.');return}if(page==='users'&&!this.canManageUsers){this.showToast('User management is available to Super Users.');return}this.activePage=page;this.searchTerm='';this.modal=null}
+  login():void {
+    if(this.loggingIn)return;
+    this.loginError='';
+    if(!this.loginUsername.trim()||!this.loginPassword){this.loginError='Enter your username and password.';return;}
+    this.loggingIn=true;
+    this.auth.login(this.loginUsername.trim(),this.loginPassword).subscribe({
+      next:session=>{
+        this.loggingIn=false;this.loggedIn=true;this.authenticatedRole=session.role;
+        this.loginUsername=session.username;this.loginPassword='';this.activePage='inventory';this.searchTerm='';
+        this.showToast(`Welcome, ${session.username}. Signed in with Spring Boot.`);
+        this.refreshProducts();this.cdr.markForCheck();
+      },
+      error:err=>{
+        this.loggingIn=false;
+        this.loginError=err instanceof HttpErrorResponse
+          ? (err.status===401||err.status===403 ? 'Invalid username or password, or your account is not authorized.' : `Login failed (HTTP ${err.status||'network error'}). Check the local Spring Boot server.`)
+          : (err?.message||'Login failed.');
+        this.cdr.markForCheck();
+      }
+    });
+  }
+  logout():void{this.auth.logout();this.loggedIn=false;this.authenticatedRole='';this.products=[];this.employees=[];this.productError='';this.userError='';this.loginPassword='';this.loginError='';this.modal=null;this.searchTerm=''}
+  private ensureSession():boolean {
+    if(this.auth.session)return true;
+    this.logout();this.loginError='Your session has expired. Please sign in again.';return false;
+  }
+  navigate(page:Page):void{if(page==='orders'&&!this.canCreateOrders){this.showToast('Order creation is available to Product Managers and Super Users.');return}if(page==='users'&&!this.canManageUsers){this.showToast('User management is available to Super Users.');return}this.activePage=page;this.searchTerm='';this.modal=null;if(page==='users')this.refreshUsers();if(page==='inventory')this.refreshProducts();}
   showToast(message:string):void{this.toast=message}
   clearToast():void{this.toast=''}
-  openNewProduct():void{this.editingProductId=null;this.productForm={name:'',description:'',barcode:'',price:0,stock:0,category:'Accessories'};this.modal='product'}
-  openEditProduct(p:Product):void{this.editingProductId=p.id;this.productForm={name:p.name,description:p.description,barcode:p.barcode,price:p.price,stock:p.stock,category:p.category};this.modal='product'}
-  saveProduct():void{if(!this.productForm.name.trim()||!this.productForm.barcode.trim()||this.productForm.price<0||this.productForm.stock<0||!Number.isInteger(Number(this.productForm.stock))){this.showToast('Enter product name, barcode, valid price, and whole-number stock.');return}if(this.editingProductId!==null){const p=this.products.find(x=>x.id===this.editingProductId);if(p)Object.assign(p,this.productForm);this.showToast('Product updated in demo data.')}else{const id=Math.max(1000,...this.products.map(p=>p.id))+1;this.products.unshift({id,...this.productForm});this.showToast('Product added to demo data.')}this.modal=null}
-  deleteProduct(p:Product):void{if(!confirm(`Delete "${p.name}" from this demo list?`))return;this.products=this.products.filter(x=>x.id!==p.id);this.showToast('Product removed from demo data.')}
+  openNewProduct():void{this.editingProductId=null;this.productForm={name:'',description:'',barcode:'',price:0,stock:0,reorderLevel:5};this.modal='product'}
+  openEditProduct(p:Product):void{this.editingProductId=p.id;this.productForm={name:p.name,description:p.description,barcode:p.barcode,price:p.price,stock:p.stock,reorderLevel:p.reorderLevel};this.modal='product'}
+  saveProduct():void {
+    if(!this.ensureSession()||!this.canManageInventory){this.showToast('Inventory editing requires an authorized operator.');return;}
+    const f=this.productForm;
+    if(this.savingProduct)return;
+    if(!f.name.trim()||!f.barcode.trim()||!Number.isFinite(Number(f.price))||Number(f.price)<0||
+       !Number.isInteger(Number(f.stock))||Number(f.stock)<0||
+       !Number.isInteger(Number(f.reorderLevel))||Number(f.reorderLevel)<0||
+       Number(f.price)>9999999999.99){this.showToast('Enter a name, SKU, non-negative price, and whole-number stock/reorder levels.');return;}
+    const isNew=this.editingProductId===null;
+    const targetStock=Number(f.stock);
+    const original=this.products.find(p=>p.id===this.editingProductId);
+    const stockChanged=isNew ? targetStock!==0 : targetStock!==original?.stock;
+    this.savingProduct=true;
+    const payload=this.toApi(f);
+    const request=isNew?this.productApi.create(payload):this.productApi.update(this.editingProductId!,{
+      name:payload.name,description:payload.description,price:payload.price,reorder_level:payload.reorder_level
+    });
+    request.subscribe({
+      next:response=>{
+        const id:number|null=isNew ? Number((response as {product_id?:number}).product_id) : this.editingProductId;
+        if(stockChanged && id!==null && Number.isInteger(id) && id>0){
+          this.productApi.adjustStock(id,targetStock).subscribe({
+            next:()=>this.finishProductSave(isNew),
+            error:err=>{
+              this.savingProduct=false;this.modal=null;
+              this.showToast(`Product ${isNew?'created':'updated'}, but stock adjustment failed: ${this.apiError(err)}`);
+              this.refreshProducts();this.cdr.markForCheck();
+            }
+          });
+        } else if(stockChanged){
+          this.savingProduct=false;this.modal=null;
+          this.showToast('Product saved, but the API did not return a product_id for the stock transaction.');
+          this.refreshProducts();this.cdr.markForCheck();
+        } else this.finishProductSave(isNew);
+      },
+      error:err=>{this.savingProduct=false;this.showToast(this.apiError(err));this.cdr.markForCheck();}
+    });
+  }
+  private finishProductSave(created:boolean):void {
+    this.savingProduct=false;this.modal=null;
+    this.showToast(created?'Product created in PostgreSQL.':'Product updated in PostgreSQL.');
+    this.refreshProducts();this.cdr.markForCheck();
+  }
+  deleteProduct(p:Product):void {
+    this.showToast(`Product deletion is not available: the updated FastAPI has no DELETE /api/products/${p.id} endpoint.`);
+  }
   openNewOrder():void{if(!this.products.length){this.showToast('Add a product before creating an order.');return}this.orderProductId=this.products[0].id;this.orderQuantity=1;this.modal='order'}
-  saveOrder():void{const p=this.selectedOrderProduct;const q=Number(this.orderQuantity);if(!p||!Number.isInteger(q)||q<1){this.showToast('Choose a product and quantity of at least 1.');return}if(q>p.stock){this.showToast(`Not enough stock. Only ${p.stock} unit(s) available.`);return}p.stock-=q;const id=Math.max(5000,...this.orders.map(o=>o.id))+1;this.orders.unshift({id,createdBy:this.currentUsername,date:new Date().toISOString().slice(0,10),items:`${p.name} × ${q}`,total:p.price*q,status:'Completed'});this.modal=null;this.showToast(`Demo order #${id} created; stock updated in browser memory.`)}
-  openNewUser():void{this.editingUserId=null;this.userForm={username:'',password:'',role:'Product Manager',status:'Active'};this.modal='user'}
-  openEditUser(e:Employee):void{this.editingUserId=e.id;this.userForm={username:e.username,password:'',role:e.role,status:e.status};this.modal='user'}
-  saveUser():void{if(!this.userForm.username.trim()){this.showToast('Enter a username.');return}if(this.editingUserId!==null){const e=this.employees.find(x=>x.id===this.editingUserId);if(e){e.username=this.userForm.username.trim();e.role=this.userForm.role;e.status=this.userForm.status}this.showToast('Employee updated in demo data.')}else{const id=Math.max(0,...this.employees.map(e=>e.id))+1;this.employees.unshift({id,username:this.userForm.username.trim(),role:this.userForm.role,status:this.userForm.status});this.showToast('Employee added. Password is not saved by this UI.')}this.modal=null}
-  deleteUser(e:Employee):void{if(!confirm(`Delete account "${e.username}" from this demo list?`))return;this.employees=this.employees.filter(x=>x.id!==e.id);this.showToast('Employee removed from demo data.')}
+  saveOrder():void{const p=this.selectedOrderProduct;const q=Number(this.orderQuantity);if(!p||!Number.isInteger(q)||q<1){this.showToast('Choose a product and quantity of at least 1.');return}if(q>p.stock){this.showToast(`Not enough stock. Only ${p.stock} unit(s) available.`);return}const id=Math.max(5000,...this.orders.map(o=>o.id))+1;this.orders.unshift({id,createdBy:this.currentUsername,date:new Date().toISOString().slice(0,10),items:`${p.name} × ${q}`,total:p.price*q,status:'Pending'});this.modal=null;this.showToast(`Demo order #${id} added locally only. Cloud stock was NOT changed.`)}
+  openNewUser():void{if(!this.canManageUsers)return;this.editingUserId=null;this.userForm={username:'',password:'',role:'Product Manager',status:'Active',firstName:'',lastName:'',email:''};this.modal='user'}
+  openEditUser(e:Employee):void{if(!this.canManageUsers)return;this.editingUserId=e.id;this.userForm={username:e.username,password:'',role:e.role,status:e.status,firstName:e.firstName,lastName:e.lastName,email:e.email};this.modal='user'}
+  saveUser():void {
+    if(!this.canManageUsers||!this.ensureSession()||this.savingUser)return;
+    const f=this.userForm;
+    if(!f.username.trim()||!f.email.trim()||(this.editingUserId===null&&!f.password)){
+      this.showToast('Username, email and (for new users) password are required.');return;
+    }
+    const existing=this.employees.find(e=>e.id===this.editingUserId);
+    const role=(existing&&existing.role===f.role) ? existing.apiRole : this.roleForApi(f.role);
+    const payload={role,firstName:f.firstName.trim(),lastName:f.lastName.trim(),email:f.email.trim(),isActive:f.status==='Active'};
+    const creating=this.editingUserId===null;
+    const request=creating
+      ?this.userApi.create({...payload,username:f.username.trim(),password:f.password})
+      :this.userApi.update(this.editingUserId!,payload);
+    this.savingUser=true;
+    request.subscribe({
+      next:()=>{this.savingUser=false;this.modal=null;this.showToast(creating?'User created in Spring Boot.':'User updated in Spring Boot.');this.refreshUsers();this.cdr.markForCheck();},
+      error:err=>{this.savingUser=false;this.showToast(this.apiError(err));this.cdr.markForCheck();}
+    });
+  }
+  deleteUser(e:Employee):void {
+    if(!this.canManageUsers||!this.ensureSession()||e.status==='Inactive')return;
+    if(e.username===this.currentUsername){this.showToast('You cannot deactivate your own signed-in account here.');return;}
+    if(!confirm(`Deactivate "${e.username}"? Spring Boot will retain the record but mark it inactive.`))return;
+    this.userApi.disable(e.id).subscribe({
+      next:()=>{this.showToast('User deactivated in Spring Boot.');this.refreshUsers();this.cdr.markForCheck();},
+      error:err=>{this.showToast(this.apiError(err));this.cdr.markForCheck();}
+    });
+  }
 }
